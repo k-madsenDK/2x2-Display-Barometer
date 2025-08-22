@@ -1,5 +1,7 @@
 # SBComputer 2x2 Barometer/Clock (RP2040 Pico, dual-core)
 
+![Barometermonteret](./barometer.jpg)
+
 Firmware for a “Pico 2x2” device with 4x ST7789 240x240 TFT displays and a BME280 sensor. It shows humidity, temperature (compensated for self‑heating and backlight), pressure (hPa), and a clock with month backgrounds. A fast web UI lets you view status and adjust backlight and temperature calibration. Calibration values are stored on the SD card.
 
 Core split:
