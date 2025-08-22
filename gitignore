@@ -1,0 +1,17 @@
+# Local config (keep examples in repo, ignore real files)
+wifi.cfg
+calib.cfg
+
+# IDE/editor folders
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build/output caches (varies by setup)
+.arduinoIDE/
+.pio/
+build/
+out/

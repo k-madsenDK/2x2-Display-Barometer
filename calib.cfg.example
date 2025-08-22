@@ -1,0 +1,5 @@
+# Fixed self-heating at BL=0 (°C)
+HEATK=0.30
+
+# Temperature rise per PWM count (°C/count), e.g. 0.51°C at 255 => 0.0020
+BLCOMP=0.0020
