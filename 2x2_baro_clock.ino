@@ -63,6 +63,7 @@
 #include <RTClib.h>
 #include <math.h>   // expf/fminf/fmaxf
 #include <Ticker.h> // lightweight periodic ISR-like ticks on Core0
+#include <stdlib.h>  // strtod
 
 // RP2040 Pico SDK headers (Earle core)
 #include "hardware/rtc.h"
@@ -432,6 +433,7 @@ static void drawTempValue(Adafruit_ST7789* tft, const char* txt) { tft->setTextW
 static void drawHpaLabel(Adafruit_ST7789* tft) { drawCentered(tft, P_LABEL_Y, " Hpa "); }
 static void drawHpaValue(Adafruit_ST7789* tft, const char* txt) { char buf[24]; snprintf(buf, sizeof(buf), " %s ", txt); drawCentered(tft, P_VALUE_Y, buf); }
 static void drawHpaState(Adafruit_ST7789* tft, const char* txt) { drawCentered(tft, P_STATE_Y, txt); }
+static char s_lastHpaText[24] = "";
 
 // Single WiFi indicator tile on the clock display
 static uint16_t s_wifi_col = 0;
@@ -816,13 +818,21 @@ void loop1() {
     switch (cmd.type) {
       case CMD_HUM_TEXT:  drawHumidityValue(tftHumid, cmd.payload); break;
       case CMD_TEMP_TEXT: beginTempAccess(); drawTempValue(tftTemp, cmd.payload); endTempAccess(); break;
-      case CMD_HPA_TEXT:  drawHpaValue(tftHpa, cmd.payload); break;
+      case CMD_HPA_TEXT:
+        drawHpaValue(tftHpa, cmd.payload);
+        // Gem sidst viste værdi, så den kan gen-tegnes efter en baggrundsopdatering
+        strncpy(s_lastHpaText, cmd.payload, sizeof(s_lastHpaText));
+        break;
       case CMD_HPA_BG_CAT:
         if (sd_ready) {
           (void)drawBMP24_240x240_HPA_SPI0(tftHpa, categoryBmp(cmd.ivalue));
           tftHpa->drawRect(0, 0, 239, 239, C_RED);
           drawHpaLabel(tftHpa);
           drawHpaState(tftHpa, categoryText(cmd.ivalue));
+          // GEN-TEGN måleværdien oven på den nye baggrund
+          if (s_lastHpaText[0] != '\0') {
+            drawHpaValue(tftHpa, s_lastHpaText);
+          }
         }
         break;
       case CMD_CLK_BG_MONTH:
@@ -860,9 +870,23 @@ static String g_lastTime = "--:--:--";
 // Backlight control from Core0 (shared PWM)
 static inline void setBacklightCore0(uint8_t duty) { g_backlight = duty; analogWrite(BACKLIGHT, duty); }
 
+// Locale-sikker float-parser: accepterer både "3.4" og "3,4"
+static inline float parseFloatLocale(const String& in, bool* ok) {
+  String s = in;
+  s.trim();
+  s.replace(',', '.');
+  const char* c = s.c_str();
+  char* endp = nullptr;
+  double v = strtod(c, &endp);
+  bool good = (endp && endp != c);
+  if (ok) *ok = good;
+  return (float)v;
+}
+
 // ===== Web: index page (status and backlight) =====
+
 void handleIndex() {
-  String html = "<html><head><title>Barometer</title><style>body{ text-align:center; font-family:Arial,sans-serif;} form{display:inline-block;margin-top:16px;} hr{margin:24px auto;width:80%;} a.btn{display:inline-block;margin-top:12px;padding:8px 12px;border:1px solid #444;border-radius:6px;text-decoration:none;color:#000;background:#f0f0f0}</style></head><body>";
+  String html = "<!doctype html><html lang='da'><head><meta charset='utf-8'><title>Barometer</title><style>body{ text-align:center; font-family:Arial,sans-serif;} form{display:inline-block;margin-top:16px;} hr{margin:24px auto;width:80%;} a.btn{display:inline-block;margin-top:12px;padding:8px 12px;border:1px solid #444;border-radius:6px;text-decoration:none;color:#000;background:#f0f0f0}</style></head><body>";
   html += "<h2>SBComputer 2x2 pico Barometer</h2>";
   html += "<b>Time:</b> " + g_lastTime + "<br>";
   html += "<b>Temperature:</b> " + String(g_lastTemp, 1) + " &deg;C<br>";
@@ -877,8 +901,9 @@ void handleIndex() {
   html += "</form>";
   html += "<br><a class='btn' href='/calib'>Calibration</a>";
   html += "</body></html>";
-  server->send(200, "text/html", html);
+  server->send(200, "text/html; charset=utf-8", html);
 }
+
 void handleStatusJson() {
   String json = "{";
   json += "\"time\":\"" + g_lastTime + "\",";
@@ -887,8 +912,9 @@ void handleStatusJson() {
   json += "\"humidity\":" + String(g_lastHumidity, 1) + ",";
   json += "\"cpu_temp\":" + String(g_cpuTemp, 1);
   json += "}";
-  server->send(200, "application/json", json);
+  server->send(200, "application/json; charset=utf-8", json);
 }
+
 void handleBacklight() {
   if (server->hasArg("bl")) {
     int val = server->arg("bl").toInt();
@@ -903,10 +929,10 @@ void handleBacklight() {
 void handleCalibJson() {
   String json = "{";
   json += "\"heatk\":" + String(g_tempHeatK, 3) + ",";
-  json += "\"bl255\":" + String(backlightcomp * 255.0f, 3) + ","; // human-friendly (°C at 255)
-  json += "\"blcomp\":" + String(backlightcomp, 6);                // internal (°C/count)
+  json += "\"bl255\":" + String(backlightcomp * 255.0f, 3) + ",";
+  json += "\"blcomp\":" + String(backlightcomp, 6);
   json += "}";
-  server->send(200, "application/json", json);
+  server->send(200, "application/json; charset=utf-8", json);
 }
 
 // ===== Auto-calibration (Core0): low-CPU state machine via Ticker =====
@@ -946,10 +972,10 @@ struct AutoCalCtx {
 Ticker g_acTicker;
 
 static inline bool acAllowedNow() {
-  // Only gate on time since boot; reference temperature is validated on submit
   uint32_t sinceBoot = millis() - g_ac.bootMs;
-  return sinceBoot >= (30UL * 60UL * 1000UL); // 30 minutes
+  return sinceBoot >= (30UL * 60UL * 1000UL); // 30 min
 }
+
 static inline float round01(float x) { return roundf(x * 10.0f) / 10.0f; }
 static float readBmeRawTemp() {
   if (!bme_ok) return NAN;
@@ -1084,67 +1110,78 @@ void handleAutoCalibJson() {
   json += "\"current_bl255\":" + String(backlightcomp * 255.0f, 3) + ",";
   json += "\"stable_count\":" + String(g_ac.stableCount);
   json += "}";
-  server->send(200, "application/json", json);
+  server->send(200, "application/json; charset=utf-8", json);
 }
+
 void handleAutoCalibStart() {
   float ref = server->hasArg("ref") ? server->arg("ref").toFloat() : NAN;
-  bool dry = true; if (server->hasArg("dry")) dry = (server->arg("dry").toInt() != 0);
+  // Default = not dry-run; only dry if dry=1 sendes
+  bool dry = server->hasArg("dry") ? (server->arg("dry").toInt() != 0) : false;
   char m[128]; bool ok = autoCalibStart(ref, dry, m, sizeof(m));
   String json = "{";
   json += "\"ok\":" + String(ok ? "true" : "false") + ",";
   json += "\"message\":\"" + String(m) + "\"";
   json += "}";
-  server->send(ok ? 200 : 400, "application/json", json);
+  server->send(ok ? 200 : 400, "application/json; charset=utf-8", json);
 }
+
 void handleAutoCalibCancel() {
   char m[96]; autoCalibCancel(m, sizeof(m));
   String json = "{\"ok\":true,\"message\":\"" + String(m) + "\"}";
-  server->send(200, "application/json", json);
+  server->send(200, "application/json; charset=utf-8", json);
 }
+
 void handleAutoCalibApply() {
-  bool save = server->hasArg("save") ? (server->arg("save").toInt()!=0) : true; // default save
+  bool save = server->hasArg("save") ? (server->arg("save").toInt()!=0) : true;
   char m[128]; bool ok = autoCalibApply(save, m, sizeof(m));
   String json = "{";
   json += "\"ok\":" + String(ok ? "true" : "false") + ",";
   json += "\"message\":\"" + String(m) + "\"";
   json += "}";
-  server->send(ok ? 200 : 400, "application/json", json);
+  server->send(ok ? 200 : 400, "application/json; charset=utf-8", json);
 }
 
 // ===== Web: calibration page (manual + auto) =====
+// ===== Web: calibration page (manual + auto) =====
 void handleCalib() {
   String msg = "";
-  // Manual update of HEATK and BL rise at 255 (converted to per-count internally)
-  bool haveHeatK = server->hasArg("heatk");
-  bool haveBl255 = server->hasArg("bl255");
-  bool haveBlComp = server->hasArg("blcomp"); // backward compatibility
+
+  // Manual save (HEATK og BL-kompensation) – accepterer komma eller punktum
+  bool haveHeatK  = server->hasArg("heatk");
+  bool haveBl255  = server->hasArg("bl255");
+  bool haveBlComp = server->hasArg("blcomp"); // bagudkompatibilitet, °C per PWM-count
 
   if (haveHeatK || haveBl255 || haveBlComp) {
-    float hk = haveHeatK ? server->arg("heatk").toFloat() : g_tempHeatK;
+    float hk = g_tempHeatK;
     float bc = backlightcomp;
-    if (haveBl255) {
-      float bl255 = server->arg("bl255").toFloat();
-      if (!isfinite(bl255)) bl255 = backlightcomp * 255.0f;
-      bl255 = fminf(fmaxf(bl255, 0.0f), 10.0f);
-      bc = bl255 / 255.0f;
-    } else if (haveBlComp) {
-      float bc_in = server->arg("blcomp").toFloat();
-      if (!isfinite(bc_in)) bc_in = backlightcomp;
-      bc = fminf(fmaxf(bc_in, 0.0f), 0.1f);
+
+    if (haveHeatK) {
+      bool ok = false;
+      float v = parseFloatLocale(server->arg("heatk"), &ok);
+      if (ok && isfinite(v)) hk = fminf(fmaxf(v, 0.0f), 10.0f);
     }
-    if (!isfinite(hk)) hk = g_tempHeatK;
-    hk = fminf(fmaxf(hk, 0.0f), 10.0f);
+    if (haveBl255) {
+      bool ok = false;
+      float v = parseFloatLocale(server->arg("bl255"), &ok); // °C ved 255
+      if (ok && isfinite(v)) bc = fminf(fmaxf(v / 255.0f, 0.0f), 0.1f);
+    } else if (haveBlComp) {
+      bool ok = false;
+      float v = parseFloatLocale(server->arg("blcomp"), &ok); // °C pr. PWM-count
+      if (ok && isfinite(v)) bc = fminf(fmaxf(v, 0.0f), 0.1f);
+    }
+
     g_tempHeatK   = hk;
     backlightcomp = bc;
 
+    // Gem på SD via Core1
     DrawCmd c{}; c.type = CMD_SAVE_CALIB; q_push(c);
     msg += "<div style='color:green;margin:8px 0;'>Saved new calibration values</div>";
   }
 
-  // Auto-cal start/cancel/apply from GUI
+  // Auto-cal start/cancel/apply fra GUI
   if (server->hasArg("startac")) {
     float ref = server->hasArg("ref") ? server->arg("ref").toFloat() : NAN;
-    bool dry = server->hasArg("dry") ? (server->arg("dry").toInt()!=0) : true;
+    bool dry = server->hasArg("dry") ? (server->arg("dry").toInt()!=0) : false; // default = ikke dry-run
     char m[128];
     if (autoCalibStart(ref, dry, m, sizeof(m))) msg += String("<div style='color:green;margin:8px 0;'>") + m + "</div>";
     else msg += String("<div style='color:#b00;margin:8px 0;'>") + m + "</div>";
@@ -1158,8 +1195,8 @@ void handleCalib() {
     else msg += String("<div style='color:#b00;margin:8px 0;'>") + m + "</div>";
   }
 
-  // Render page
-  String html = "<html><head><title>Calibration</title><style>"
+  // Render side (uændret nedenfor)
+  String html = "<!doctype html><html lang='da'><head><meta charset='utf-8'><title>Calibration</title><style>"
                 "body{font-family:Arial,sans-serif;margin:16px}"
                 "label{display:block;margin:8px 0 4px}"
                 "input[type=number]{width:220px;padding:6px}"
@@ -1173,22 +1210,20 @@ void handleCalib() {
   html += "<h2>Calibration</h2>";
   if (msg.length()) html += msg;
 
-  // Manual section
   html += "<fieldset><legend>Manual</legend>";
   html += "<form action='/calib' method='get'>";
   html += "<label>Fixed heat offset (HEATK), &deg;C</label>";
-  html += "<input type='number' name='heatk' step='0.1' min='0' max='10' value='" + String(g_tempHeatK, 3) + "'>";
-  html += "<div class='hint'>Typically 2–4 &deg;C depending on your build.</div>";
+  html += "<input type='number' name='heatk' step='0.001' min='0' max='10' value='" + String(g_tempHeatK, 3) + "'>";
+  html += "<div class='hint'>Typically 2&ndash;4 &deg;C depending on your build.</div>";
 
   html += "<label>Backlight-induced temperature rise (&deg;C at PWM=255)</label>";
-  html += "<input type='number' name='bl255' step='0.1' min='0' max='10' value='" + String(backlightcomp * 255.0f, 3) + "'>";
+  html += "<input type='number' name='bl255' step='0.001' min='0' max='10' value='" + String(backlightcomp * 255.0f, 3) + "'>";
   html += "<div class='hint'>Shown as &deg;C at 255; internally stored as &deg;C per PWM-count (" + String(backlightcomp, 6) + ").</div>";
 
   html += "<br><input class='btn' type='submit' value='Save'>";
   html += "</form>";
   html += "</fieldset>";
 
-  // Auto-cal section (GUI)
   uint32_t sinceBoot = millis() - g_ac.bootMs;
   int32_t msLeft = (int32_t)((30UL * 60UL * 1000UL) - sinceBoot); if (msLeft < 0) msLeft = 0;
   int minLeft = msLeft / 60000;
@@ -1196,9 +1231,9 @@ void handleCalib() {
   html += "<fieldset><legend>Auto-calibration</legend>";
   html += "<form action='/calib' method='get'>";
   html += "<label>Reference temperature (&deg;C)</label>";
-  html += "<input type='number' name='ref' step='0.1' min='-40' max='85' required value='" + String(isfinite(g_ac.refTempC)?g_ac.refTempC:NAN, 1) + "'>";
+  html += "<input type='number' name='ref' step='0.1' min='-40' max='85' value='" + String(isfinite(g_ac.refTempC)?g_ac.refTempC:NAN, 1) + "'>";
   html += "<div class='hint'>Requires a stable environment. Can be started only 30 minutes after boot. Each phase holds at least 10 minutes (max 20) and ends when the reading is stable at 0.1 &deg;C resolution.</div>";
-  html += "<label><input type='checkbox' name='dry' value='1' " + String(g_ac.dryRun ? "checked" : "") + "> Dry-run (compute; don’t auto-save)</label>";
+  html += "<label><input type='checkbox' name='dry' value='1' " + String(g_ac.dryRun ? "checked" : "") + "> Dry-run (compute; don&rsquo;t auto-save)</label>";
 
   if (!g_ac.running) {
     if (acAllowedNow()) {
@@ -1213,7 +1248,6 @@ void handleCalib() {
   }
   html += "</form>";
 
-  // Status / suggested values
   html += "<div class='hint'>Measured BL=0: " + String(isfinite(g_ac.t1_meas)?g_ac.t1_meas:NAN, 2) + " &deg;C, "
                        "BL=255: " + String(isfinite(g_ac.t2_meas)?g_ac.t2_meas:NAN, 2) + " &deg;C</div>";
 
@@ -1235,7 +1269,7 @@ void handleCalib() {
   html += "<br><a href='/' class='btn' style='border:1px solid #444;text-decoration:none;'>Back</a>";
   html += "</body></html>";
 
-  server->send(200, "text/html", html);
+  server->send(200, "text/html; charset=utf-8", html);
 }
 
 // Register web routes
