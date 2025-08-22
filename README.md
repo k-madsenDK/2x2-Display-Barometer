@@ -118,7 +118,7 @@ The pressure (hPa) is offset‑corrected (PRESS_OFFSET) and mapped to a category
 - < 1050: FINT
 - ≥ 1050: MEGET FINT
 
-By default there is no hysteresis/debounce, so near ~1018 hPa the background can flip frequently to demonstrate UI speed.
+By default there is no hysteresis/debounce, so near borders of hPa the background can flip frequently to demonstrate UI speed.
 
 ## Quick Start
 1) Prepare SD:
