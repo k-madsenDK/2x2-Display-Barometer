@@ -120,6 +120,11 @@ The pressure (hPa) is offset‑corrected (PRESS_OFFSET) and mapped to a category
 
 By default there is no hysteresis/debounce, so near borders of hPa the background can flip frequently to demonstrate UI speed.
 
+## Change display text to English
+- Hpa start at line 455
+- Watch start at line 1332
+- Hum line 429
+
 ## Quick Start
 1) Prepare SD:
    - Add /wifi.cfg if you want WiFi (SSID/PASS as above)
