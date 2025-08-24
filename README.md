@@ -12,9 +12,9 @@ A fast web UI lets you view status and adjust backlight and temperature calibrat
 >
 > Example:
 > <p align="center">
->   <img src="docs/2x2baromlille0.jpg">
->   <img src="docs/2x2baromlille1.jpg">
->   <img src="docs/2x2baromlille2.jpg">
+>   <img src="docs/2x2baromlille0.jpg" width="260">
+>   <img src="docs/2x2baromlille1.jpg" width="260">
+>   <img src="docs/2x2baromlille2.jpg" width="260">
 > </p>
 
 ---
