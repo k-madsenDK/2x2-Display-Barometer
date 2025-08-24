@@ -1,6 +1,6 @@
-# SBComputer Tachyon 2x2 Barometer/Clock (RP2040 Pico, dual‑core)
+# SBComputer Pico 2x2 Display (RP2040 Pico, dual‑core)
 
-Firmware for the Tachyon “2×2” wall device with 4× ST7789 240×240 TFT displays and a BME280 sensor.  
+Firmware for the SBComputer Pico 2x2 Display “2×2” wall device with 4× ST7789 240×240 TFT displays and a BME280 sensor.  
 It shows humidity, temperature (compensated for self‑heating and backlight), pressure (hPa), and a clock with month backgrounds.  
 A fast web UI lets you view status and adjust backlight and temperature calibration. Calibration values are stored on the SD card.
 
