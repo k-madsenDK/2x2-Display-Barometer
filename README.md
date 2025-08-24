@@ -65,7 +65,7 @@ The UI is highly responsive; the pressure category background can change immedia
 
 ---
 
-## Hardware (Tachyon device)
+## Hardware (Pico device)
 
 - MCU: Raspberry Pi Pico (RP2040), Earle Philhower Arduino core
 - Sensor: BME280 on I2C0 (addr 0x76)
