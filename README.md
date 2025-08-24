@@ -4,13 +4,7 @@ Firmware for the Tachyon “2×2” wall device with 4× ST7789 240×240 TFT dis
 It shows humidity, temperature (compensated for self‑heating and backlight), pressure (hPa), and a clock with month backgrounds.  
 A fast web UI lets you view status and adjust backlight and temperature calibration. Calibration values are stored on the SD card.
 
-> Optional: add photos under `docs/` and show them here:
->
-> - `docs/2x2baro.jpg`
-> - `docs/hero-2.jpg`
-> - `docs/hero-3.jpg`
->
-> Example:
+
 > <p align="center">
 >   <img src="docs/2x2baromlille0.jpg" width="260">
 >   <img src="docs/2x2baromlille1.jpg" width="260">
