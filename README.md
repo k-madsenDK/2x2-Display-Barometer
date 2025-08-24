@@ -6,15 +6,15 @@ A fast web UI lets you view status and adjust backlight and temperature calibrat
 
 > Optional: add photos under `docs/` and show them here:
 >
-> - `docs/hero-1.jpg`
+> - `docs/2x2baro.jpg`
 > - `docs/hero-2.jpg`
 > - `docs/hero-3.jpg`
 >
 > Example:
 > <p align="center">
->   <img src="docs/hero-1.jpg" width="260">
->   <img src="docs/hero-2.jpg" width="260">
->   <img src="docs/hero-3.jpg" width="260">
+>   <img src="docs/2x2baromlille0.jpg">
+>   <img src="docs/2x2baromlille1.jpg">
+>   <img src="docs/2x2baromlille2.jpg">
 > </p>
 
 ---
